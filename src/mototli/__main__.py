@@ -69,27 +69,48 @@ def _format_directory(response: GopherResponse, verbose: bool = False) -> None:
 
         console.print(table)
     else:
-        # Simple display
+        # Simple display with selectors
+        # Calculate max display text length for alignment (excluding info items)
+        max_len = 0
+        for item in response.items:
+            if not item.item_type.is_informational and item.display_text:
+                max_len = max(max_len, len(item.display_text))
+        # Cap at reasonable width and add padding
+        max_len = min(max_len, 50)
+
         for item in response.items:
             type_char = item.item_type.value
+            display = item.display_text or ""
+            selector = item.selector or ""
+
+            # Format selector display (dim, right-aligned)
+            selector_display = f"[dim]{selector}[/]" if selector else ""
 
             # Color and format based on type
             if item.item_type == ItemType.DIRECTORY:
-                console.print(f"[bold blue][{type_char}][/] {item.display_text}/")
+                padded = display.ljust(max_len)
+                console.print(f"[bold blue][{type_char}][/] {padded}  {selector_display}")
             elif item.item_type == ItemType.TEXT:
-                console.print(f"[green][{type_char}][/] {item.display_text}")
+                padded = display.ljust(max_len)
+                console.print(f"[green][{type_char}][/] {padded}  {selector_display}")
             elif item.item_type == ItemType.SEARCH:
-                console.print(f"[yellow][{type_char}][/] {item.display_text} [search]")
+                padded = display.ljust(max_len)
+                console.print(f"[yellow][{type_char}][/] {padded}  {selector_display}")
             elif item.item_type == ItemType.ERROR:
-                console.print(f"[red][{type_char}][/] {item.display_text}")
+                padded = display.ljust(max_len)
+                console.print(f"[red][{type_char}][/] {padded}  {selector_display}")
             elif item.item_type == ItemType.INFO:
-                console.print(f"[dim]    {item.display_text}[/]")
+                # Info items don't show selectors
+                console.print(f"[dim]    {display}[/]")
             elif item.item_type.is_binary:
-                console.print(f"[magenta][{type_char}][/] {item.display_text}")
+                padded = display.ljust(max_len)
+                console.print(f"[magenta][{type_char}][/] {padded}  {selector_display}")
             elif item.item_type.is_external:
-                console.print(f"[cyan][{type_char}][/] {item.display_text} [external]")
+                padded = display.ljust(max_len)
+                console.print(f"[cyan][{type_char}][/] {padded}  {selector_display}")
             else:
-                console.print(f"[{type_char}] {item.display_text}")
+                padded = display.ljust(max_len)
+                console.print(f"[{type_char}] {padded}  {selector_display}")
 
 
 def _format_text(response: GopherResponse) -> None:

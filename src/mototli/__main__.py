@@ -11,6 +11,7 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from .client.session import GopherClient
@@ -78,7 +79,7 @@ def _handle_binary_output(
         # User feedback
         console.print(f"[green]Saved to:[/] {saved_path}")
     except OSError as e:
-        error_console.print(f"[red]Failed to save file:[/] {e}")
+        error_console.print(f"[red]Failed to save file:[/] {escape(str(e))}")
         raise typer.Exit(code=1) from e
 
     # Open file if requested
@@ -86,7 +87,7 @@ def _handle_binary_output(
         try:
             open_file(saved_path)
         except OSError as e:
-            error_console.print(f"[red]Failed to open file:[/] {e}")
+            error_console.print(f"[red]Failed to open file:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
 
 
@@ -123,8 +124,8 @@ def _format_directory(response: GopherResponse, verbose: bool = False) -> None:
 
             table.add_row(
                 type_str,
-                item.display_text,
-                item.selector if item.selector else "",
+                escape(item.display_text) if item.display_text else "",
+                escape(item.selector) if item.selector else "",
                 host_port,
             )
 
@@ -141,8 +142,8 @@ def _format_directory(response: GopherResponse, verbose: bool = False) -> None:
 
         for item in response.items:
             type_char = item.item_type.value
-            display = item.display_text or ""
-            selector = item.selector or ""
+            display = escape(item.display_text or "")
+            selector = escape(item.selector or "")
 
             # Format selector display (dim, right-aligned)
             selector_display = f"[dim]{selector}[/]" if selector else ""
@@ -344,13 +345,13 @@ def get(
                     _format_text(response)
 
         except TimeoutError as e:
-            error_console.print(f"[red]Timeout:[/] {e}")
+            error_console.print(f"[red]Timeout:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
         except ConnectionError as e:
-            error_console.print(f"[red]Connection error:[/] {e}")
+            error_console.print(f"[red]Connection error:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
         except Exception as e:
-            error_console.print(f"[red]Error:[/] {e}")
+            error_console.print(f"[red]Error:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
 
     # Run the async function
@@ -393,13 +394,13 @@ def text(
                 console.print(content)
 
         except TimeoutError as e:
-            error_console.print(f"[red]Timeout:[/] {e}")
+            error_console.print(f"[red]Timeout:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
         except ConnectionError as e:
-            error_console.print(f"[red]Connection error:[/] {e}")
+            error_console.print(f"[red]Connection error:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
         except Exception as e:
-            error_console.print(f"[red]Error:[/] {e}")
+            error_console.print(f"[red]Error:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
 
     asyncio.run(_get())
@@ -471,13 +472,13 @@ def attrs(
                     console.print(attributes.raw)
 
         except TimeoutError as e:
-            error_console.print(f"[red]Timeout:[/] {e}")
+            error_console.print(f"[red]Timeout:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
         except ConnectionError as e:
-            error_console.print(f"[red]Connection error:[/] {e}")
+            error_console.print(f"[red]Connection error:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
         except Exception as e:
-            error_console.print(f"[red]Error:[/] {e}")
+            error_console.print(f"[red]Error:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
 
     asyncio.run(_get())
@@ -596,7 +597,7 @@ def serve(
             server_config = ServerConfig.from_toml(config)
             console.print(f"[cyan]Loaded configuration from {config}[/]")
         except Exception as e:
-            error_console.print(f"[red]Error loading config:[/] {e}")
+            error_console.print(f"[red]Error loading config:[/] {escape(str(e))}")
             raise typer.Exit(code=1) from e
     else:
         server_config = ServerConfig(
@@ -614,7 +615,7 @@ def serve(
     try:
         server_config.validate()
     except ValueError as e:
-        error_console.print(f"[red]Configuration error:[/] {e}")
+        error_console.print(f"[red]Configuration error:[/] {escape(str(e))}")
         raise typer.Exit(code=1) from e
 
     # Print startup info
@@ -636,7 +637,7 @@ def serve(
     except KeyboardInterrupt:
         console.print("\n[yellow]Server stopped[/]")
     except Exception as e:
-        error_console.print(f"[red]Server error:[/] {e}")
+        error_console.print(f"[red]Server error:[/] {escape(str(e))}")
         raise typer.Exit(code=1) from e
 
 

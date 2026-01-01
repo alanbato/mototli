@@ -17,7 +17,7 @@ from .client.session import GopherClient
 from .protocol.constants import DEFAULT_PORT, REQUEST_TIMEOUT
 from .protocol.item_types import ItemType
 from .protocol.response import GopherResponse
-from .utils.downloads import extract_filename, save_binary
+from .utils.downloads import extract_filename, open_file, save_binary
 from .utils.mime import get_item_type_from_selector
 
 # Create console instances
@@ -38,6 +38,7 @@ def _handle_binary_output(
     force_stdout: bool = False,
     output_filename: str | None = None,
     download_dir: Path | None = None,
+    open_after_save: bool = False,
 ) -> None:
     """Handle binary response output routing.
 
@@ -50,6 +51,7 @@ def _handle_binary_output(
         force_stdout: If True, write to stdout instead of saving
         output_filename: Override filename for saving
         download_dir: Override directory for saving
+        open_after_save: If True, open the file with system default app
     """
     if not response.raw_body:
         error_console.print("[yellow]No binary content received[/]")
@@ -78,6 +80,14 @@ def _handle_binary_output(
     except OSError as e:
         error_console.print(f"[red]Failed to save file:[/] {e}")
         raise typer.Exit(code=1) from e
+
+    # Open file if requested
+    if open_after_save:
+        try:
+            open_file(saved_path)
+        except OSError as e:
+            error_console.print(f"[red]Failed to open file:[/] {e}")
+            raise typer.Exit(code=1) from e
 
 
 def _format_directory(response: GopherResponse, verbose: bool = False) -> None:
@@ -236,6 +246,11 @@ def get(
         dir_okay=True,
         resolve_path=True,
     ),
+    open_file_flag: bool = typer.Option(
+        False,
+        "--open",
+        help="Open saved file with system default application",
+    ),
 ) -> None:
     """Get a Gopher resource and display it.
 
@@ -270,6 +285,9 @@ def get(
 
         # Pipe binary to stdout
         $ mototli get gopher.example.com /file.tar.gz --stdout | tar -xz
+
+        # Download and open with default application
+        $ mototli get gopher.example.com /files/image.gif --open
     """
     # Determine item type: explicit > auto-detect > default (directory)
     if item_type is not None:
@@ -319,6 +337,7 @@ def get(
                         force_stdout=stdout,
                         output_filename=output,
                         download_dir=download_dir,
+                        open_after_save=open_file_flag,
                     )
                 else:
                     # Text content - display

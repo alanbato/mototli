@@ -7,6 +7,8 @@ filesystem with appropriate filename extraction and directory resolution.
 from __future__ import annotations
 
 import os
+import platform
+import subprocess
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -117,3 +119,41 @@ def save_binary(
     file_path.write_bytes(data)
 
     return file_path
+
+
+def open_file(path: Path) -> None:
+    """Open a file with the system's default application.
+
+    Uses the appropriate command for the current platform:
+    - Linux: xdg-open
+    - macOS: open
+    - Windows: start
+
+    Args:
+        path: Path to the file to open
+
+    Raises:
+        OSError: If the file cannot be opened (command not found or failed)
+
+    Examples:
+        >>> open_file(Path("/tmp/image.gif"))  # Opens in default image viewer
+    """
+    system = platform.system()
+
+    if system == "Linux":
+        cmd = ["xdg-open", str(path)]
+    elif system == "Darwin":
+        cmd = ["open", str(path)]
+    elif system == "Windows":
+        cmd = ["cmd", "/c", "start", "", str(path)]
+    else:
+        raise OSError(f"Unsupported platform: {system}")
+
+    try:
+        # Use subprocess.run with check=True to raise on failure
+        # start_new_session=True prevents the child from receiving signals
+        subprocess.run(cmd, check=True, start_new_session=True)
+    except FileNotFoundError as e:
+        raise OSError(f"Command not found: {cmd[0]}") from e
+    except subprocess.CalledProcessError as e:
+        raise OSError(f"Failed to open file: {e}") from e

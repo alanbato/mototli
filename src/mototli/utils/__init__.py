@@ -4,7 +4,7 @@ This package provides utility functions for the Mototli Gopher
 client and server.
 """
 
-from .downloads import extract_filename, get_download_dir, save_binary
+from .downloads import extract_filename, get_download_dir, open_file, save_binary
 from .mime import (
     get_item_type,
     get_item_type_from_mime,
@@ -19,5 +19,6 @@ __all__ = [
     "get_item_type_from_mime",
     "get_item_type_from_selector",
     "get_mime_type",
+    "open_file",
     "save_binary",
 ]

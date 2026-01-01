@@ -1,10 +1,12 @@
-"""Mototli Gopher Protocol Client CLI.
+"""Mototli Gopher Protocol Client and Server CLI.
 
-This module provides a command-line interface for the Mototli Gopher client.
+This module provides a command-line interface for the Mototli Gopher client
+and server.
 """
 
 import asyncio
 from importlib.metadata import version as get_version
+from pathlib import Path
 
 import typer
 from rich.console import Console
@@ -21,7 +23,7 @@ error_console = Console(stderr=True, style="bold red")
 
 app = typer.Typer(
     name="mototli",
-    help="Mototli - A modern Gopher protocol client",
+    help="Mototli - A modern Gopher protocol client and server",
     add_completion=True,
     no_args_is_help=True,
 )
@@ -236,6 +238,7 @@ def text(
 
         $ mototli text gopher.floodgap.com /gopher/welcome
     """
+
     async def _get() -> None:
         try:
             async with GopherClient(timeout=timeout) as client:
@@ -281,6 +284,7 @@ def attrs(
 
         $ mototli attrs gopher.example.com /about
     """
+
     async def _get() -> None:
         try:
             async with GopherClient(timeout=timeout) as client:
@@ -312,12 +316,14 @@ def attrs(
                 console.print(table)
 
                 # Show raw if no parsed attributes
-                if not any([
-                    attributes.info,
-                    attributes.admin,
-                    attributes.abstract,
-                    attributes.views,
-                ]):
+                if not any(
+                    [
+                        attributes.info,
+                        attributes.admin,
+                        attributes.abstract,
+                        attributes.views,
+                    ]
+                ):
                     console.print("\n[dim]Raw attributes:[/]")
                     console.print(attributes.raw)
 
@@ -335,6 +341,163 @@ def attrs(
 
 
 @app.command()
+def serve(
+    root: Path = typer.Argument(
+        ".",
+        help="Document root directory to serve",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
+    ),
+    host: str = typer.Option(
+        "localhost",
+        "--host",
+        "-h",
+        help="Host address to bind to",
+    ),
+    port: int = typer.Option(
+        DEFAULT_PORT,
+        "--port",
+        "-p",
+        help="Port to listen on",
+    ),
+    hostname: str | None = typer.Option(
+        None,
+        "--hostname",
+        help="Public hostname for menu items (defaults to host)",
+    ),
+    no_directory_listing: bool = typer.Option(
+        False,
+        "--no-directory-listing",
+        help="Disable automatic directory listings",
+    ),
+    no_gopher_plus: bool = typer.Option(
+        False,
+        "--no-gopher-plus",
+        help="Disable Gopher+ extensions",
+    ),
+    admin_name: str | None = typer.Option(
+        None,
+        "--admin-name",
+        help="Administrator name for Gopher+ ADMIN block",
+    ),
+    admin_email: str | None = typer.Option(
+        None,
+        "--admin-email",
+        help="Administrator email for Gopher+ ADMIN block",
+    ),
+    config: Path | None = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to TOML configuration file",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+    ),
+    init_config: bool = typer.Option(
+        False,
+        "--init",
+        help="Generate an example configuration file and exit",
+    ),
+) -> None:
+    """Start a Gopher server.
+
+    Serves files from the specified document root directory. Supports
+    static files, directory listings, CGI scripts, and Gopher+ extensions.
+
+    Examples:
+
+        # Serve current directory on default port (70)
+        $ mototli serve
+
+        # Serve a specific directory on a custom port
+        $ mototli serve /var/gopher --port 7070
+
+        # Serve with a public hostname
+        $ mototli serve /var/gopher --hostname gopher.example.com
+
+        # Serve with Gopher+ admin info
+        $ mototli serve /var/gopher --admin-name "John Doe" \\
+            --admin-email "john@example.com"
+
+        # Use a configuration file
+        $ mototli serve --config gopher.toml
+
+        # Generate an example config file
+        $ mototli serve --init > gopher.toml
+    """
+    from .server.config import ServerConfig
+    from .server.server import run_server
+
+    # Generate example config if requested
+    if init_config:
+        example_config = ServerConfig(
+            host=host,
+            port=port,
+            document_root=root,
+            hostname=hostname,
+            enable_directory_listing=not no_directory_listing,
+            gopher_plus=not no_gopher_plus,
+            admin_name=admin_name or "Your Name",
+            admin_email=admin_email or "you@example.com",
+        )
+        # Use print() instead of console.print() to avoid Rich markup interpretation
+        print(example_config.to_toml(), end="")
+        return
+
+    # Load config from file or create from options
+    if config:
+        try:
+            server_config = ServerConfig.from_toml(config)
+            console.print(f"[cyan]Loaded configuration from {config}[/]")
+        except Exception as e:
+            error_console.print(f"[red]Error loading config:[/] {e}")
+            raise typer.Exit(code=1) from e
+    else:
+        server_config = ServerConfig(
+            host=host,
+            port=port,
+            document_root=root,
+            hostname=hostname,
+            enable_directory_listing=not no_directory_listing,
+            gopher_plus=not no_gopher_plus,
+            admin_name=admin_name,
+            admin_email=admin_email,
+        )
+
+    # Validate configuration
+    try:
+        server_config.validate()
+    except ValueError as e:
+        error_console.print(f"[red]Configuration error:[/] {e}")
+        raise typer.Exit(code=1) from e
+
+    # Print startup info
+    console.print("[bold cyan]Mototli[/] Gopher Server")
+    console.print(f"[bold]Document root:[/] {server_config.document_root}")
+    console.print(f"[bold]Listening on:[/] {server_config.host}:{server_config.port}")
+    pub_host = server_config.public_hostname
+    pub_port = server_config.public_port
+    console.print(f"[bold]Public hostname:[/] {pub_host}:{pub_port}")
+    if server_config.gopher_plus:
+        console.print("[bold]Gopher+:[/] enabled")
+    console.print()
+    console.print("[dim]Press Ctrl+C to stop[/]")
+    console.print()
+
+    # Run the server
+    try:
+        asyncio.run(run_server(server_config))
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Server stopped[/]")
+    except Exception as e:
+        error_console.print(f"[red]Server error:[/] {e}")
+        raise typer.Exit(code=1) from e
+
+
+@app.command()
 def version() -> None:
     """Show version information."""
     try:
@@ -342,7 +505,7 @@ def version() -> None:
     except Exception:
         ver = "0.1.0"
 
-    console.print("[bold cyan]Mototli[/] Gopher Protocol Client")
+    console.print("[bold cyan]Mototli[/] Gopher Protocol Client and Server")
     console.print(f"[bold]Version:[/] {ver}")
     console.print("[bold]Protocol:[/] Gopher (RFC 1436) with Gopher+ (RFC 4266)")
 

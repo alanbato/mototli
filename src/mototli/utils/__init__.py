@@ -4,10 +4,20 @@ This package provides utility functions for the Mototli Gopher
 client and server.
 """
 
-from .mime import get_item_type, get_item_type_from_mime, get_mime_type
+from .downloads import extract_filename, get_download_dir, save_binary
+from .mime import (
+    get_item_type,
+    get_item_type_from_mime,
+    get_item_type_from_selector,
+    get_mime_type,
+)
 
 __all__ = [
-    "get_mime_type",
+    "extract_filename",
+    "get_download_dir",
     "get_item_type",
     "get_item_type_from_mime",
+    "get_item_type_from_selector",
+    "get_mime_type",
+    "save_binary",
 ]

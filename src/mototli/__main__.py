@@ -5,6 +5,7 @@ and server.
 """
 
 import asyncio
+import sys
 from importlib.metadata import version as get_version
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from .client.session import GopherClient
 from .protocol.constants import DEFAULT_PORT, REQUEST_TIMEOUT
 from .protocol.item_types import ItemType
 from .protocol.response import GopherResponse
+from .utils.downloads import extract_filename, save_binary
+from .utils.mime import get_item_type_from_selector
 
 # Create console instances
 console = Console()
@@ -27,6 +30,54 @@ app = typer.Typer(
     add_completion=True,
     no_args_is_help=True,
 )
+
+
+def _handle_binary_output(
+    response: GopherResponse,
+    selector: str,
+    force_stdout: bool = False,
+    output_filename: str | None = None,
+    download_dir: Path | None = None,
+) -> None:
+    """Handle binary response output routing.
+
+    Decides whether to save to file or write to stdout based on flags.
+    Provides user feedback for file saves.
+
+    Args:
+        response: GopherResponse containing binary data
+        selector: Original selector for filename extraction
+        force_stdout: If True, write to stdout instead of saving
+        output_filename: Override filename for saving
+        download_dir: Override directory for saving
+    """
+    if not response.raw_body:
+        error_console.print("[yellow]No binary content received[/]")
+        return
+
+    # Force to stdout if requested
+    if force_stdout:
+        sys.stdout.buffer.write(response.raw_body)
+        return
+
+    # Determine filename
+    if output_filename:
+        filename = output_filename
+    else:
+        filename = extract_filename(selector)
+
+    # Save to filesystem
+    try:
+        saved_path = save_binary(
+            response.raw_body,
+            filename,
+            directory=download_dir,
+        )
+        # User feedback
+        console.print(f"[green]Saved to:[/] {saved_path}")
+    except OSError as e:
+        error_console.print(f"[red]Failed to save file:[/] {e}")
+        raise typer.Exit(code=1) from e
 
 
 def _format_directory(response: GopherResponse, verbose: bool = False) -> None:
@@ -141,11 +192,11 @@ def get(
         "-s",
         help="Search query (for type 7 servers)",
     ),
-    item_type: str = typer.Option(
-        "1",
+    item_type: str | None = typer.Option(
+        None,
         "--type",
         "-t",
-        help="Expected item type (0=text, 1=directory, 7=search, 9=binary)",
+        help="Item type (0=text, 1=dir, 9=binary). Auto-detects from extension.",
     ),
     timeout: float = typer.Option(
         REQUEST_TIMEOUT,
@@ -163,6 +214,27 @@ def get(
         "--raw",
         "-r",
         help="Output raw response without formatting",
+    ),
+    stdout: bool = typer.Option(
+        False,
+        "--stdout",
+        help="Force binary output to stdout (for piping)",
+    ),
+    output: str | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output filename for binary downloads",
+    ),
+    download_dir: Path | None = typer.Option(
+        None,
+        "--download-dir",
+        "-d",
+        help="Directory for binary downloads (default: ~/Downloads)",
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+        resolve_path=True,
     ),
 ) -> None:
     """Get a Gopher resource and display it.
@@ -186,14 +258,36 @@ def get(
 
         # Get raw output
         $ mototli get gopher.floodgap.com --raw
+
+        # Download a binary file (type auto-detected from .gif extension)
+        $ mototli get gopher.example.com /files/image.gif
+
+        # Download with custom filename (type auto-detected from .zip)
+        $ mototli get gopher.example.com /files/data.zip -o mydata.zip
+
+        # Download to specific directory
+        $ mototli get gopher.example.com /files/image.png -d /tmp
+
+        # Pipe binary to stdout
+        $ mototli get gopher.example.com /file.tar.gz --stdout | tar -xz
     """
-    # Parse item type
-    try:
-        expected_type = ItemType.from_char(item_type)
-    except ValueError:
-        error_console.print(f"[red]Error:[/] Unknown item type: {item_type}")
-        error_console.print("Common types: 0=text, 1=directory, 7=search, 9=binary")
-        raise typer.Exit(code=1) from None
+    # Determine item type: explicit > auto-detect > default (directory)
+    if item_type is not None:
+        # User explicitly specified type
+        try:
+            expected_type = ItemType.from_char(item_type)
+        except ValueError:
+            error_console.print(f"[red]Error:[/] Unknown item type: {item_type}")
+            error_console.print("Common types: 0=text, 1=directory, 7=search, 9=binary")
+            raise typer.Exit(code=1) from None
+    else:
+        # Try to auto-detect from selector extension
+        detected_type = get_item_type_from_selector(selector)
+        if detected_type is not None:
+            expected_type = detected_type
+        else:
+            # Default to directory for root/unknown selectors
+            expected_type = ItemType.DIRECTORY
 
     async def _get() -> None:
         try:
@@ -208,17 +302,26 @@ def get(
 
                 # Format and display response
                 if raw:
+                    # Raw mode - always output bytes to stdout
                     if response.raw_body:
-                        # Write raw bytes to stdout
-                        import sys
-
                         sys.stdout.buffer.write(response.raw_body)
                     elif response.items:
                         raw_output = response.to_bytes().decode("utf-8", errors="replace")
                         console.print(raw_output)
                 elif response.is_directory:
+                    # Directory listing
                     _format_directory(response, verbose=verbose)
+                elif expected_type.is_binary:
+                    # Binary content - save to file or stdout
+                    _handle_binary_output(
+                        response=response,
+                        selector=selector,
+                        force_stdout=stdout,
+                        output_filename=output,
+                        download_dir=download_dir,
+                    )
                 else:
+                    # Text content - display
                     _format_text(response)
 
         except TimeoutError as e:

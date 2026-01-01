@@ -191,6 +191,39 @@ def get_item_type(path: Path) -> ItemType:
     return EXTENSION_TO_ITEM_TYPE.get(suffix, ItemType.BINARY)
 
 
+def get_item_type_from_selector(selector: str) -> ItemType | None:
+    """Get the Gopher item type from a selector's file extension.
+
+    Args:
+        selector: The Gopher selector path (e.g., "/files/image.gif").
+
+    Returns:
+        The appropriate ItemType if extension is recognized, None otherwise.
+
+    Examples:
+        >>> get_item_type_from_selector("/files/image.gif")
+        <ItemType.GIF: 'g'>
+        >>> get_item_type_from_selector("/directory/")
+        None
+        >>> get_item_type_from_selector("/unknown.xyz")
+        None
+    """
+    if not selector or selector.endswith("/"):
+        return None
+
+    # Extract the last path component
+    parts = selector.rstrip("/").split("/")
+    filename = parts[-1] if parts else ""
+
+    if not filename or "." not in filename:
+        return None
+
+    # Get the extension
+    suffix = "." + filename.rsplit(".", 1)[-1].lower()
+
+    return EXTENSION_TO_ITEM_TYPE.get(suffix)
+
+
 def get_item_type_from_mime(mime_type: str) -> ItemType:
     """Get the Gopher item type for a MIME type.
 
